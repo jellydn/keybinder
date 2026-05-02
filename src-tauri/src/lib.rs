@@ -28,6 +28,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::applications::get_installed_applications,
             commands::config::detect_active_config,
+            commands::config::get_active_config_path,
             commands::config::load_config,
             commands::config::save_config,
             commands::config::save_as_config,

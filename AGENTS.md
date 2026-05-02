@@ -46,6 +46,9 @@ The app supports both original `koekeishiya/skhd` and `jackielii/skhd.zig` fork:
   - Zig: `skhd --start-service`, `--stop-service`, `--restart-service`, `--reload`, `--install-service`, `--uninstall-service`
 - **Error Messages**: All service errors are prefixed with variant name: "skhd: ..." or "skhd.zig: ..."
 - **Config Paths**: Original checks `~/.config/skhd/skhdrc` then `~/.skhdrc`. Zig adds XDG support: `$XDG_CONFIG_HOME/skhd/skhdrc` first.
+  - Implementation: `utils/path.rs` has `get_config_path_for_variant()` with variant-specific search order
+  - Error messages list all searched paths for better debugging
+  - Command: `get_active_config_path()` returns `ActiveConfigPathInfo { path, variant, searched_paths }`
 
 ## Key Gotchas
 

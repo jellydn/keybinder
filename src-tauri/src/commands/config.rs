@@ -1,8 +1,9 @@
 /// Configuration management Tauri commands
-use crate::models::{ConfigFile, Shortcut};
+use crate::models::{ConfigFile, Shortcut, SkhdVariant};
 use crate::parser::parse_config;
 use crate::services::file_io::{read_config_safe, write_config_atomic};
-use crate::utils::path::{expand_path, get_default_config_path};
+use crate::services::settings::effective_variant_async;
+use crate::utils::path::{expand_path, get_config_path_for_variant, get_default_config_path};
 use std::sync::Mutex;
 use tauri::State;
 
@@ -105,6 +106,49 @@ pub fn detect_active_config() -> Result<String, String> {
 
     // No config file found in any standard location
     Err("No skhd configuration file found in standard locations".to_string())
+}
+
+/// Get the active skhd configuration file path based on effective variant
+///
+/// This variant-aware function checks config locations appropriate for the
+/// currently active skhd variant (original or skhd.zig).
+///
+/// ## Original variant search order:
+/// 1. ~/.config/skhd/skhdrc
+/// 2. ~/.skhdrc
+///
+/// ## Zig variant search order:
+/// 1. $XDG_CONFIG_HOME/skhd/skhdrc
+/// 2. ~/.config/skhd/skhdrc
+/// 3. ~/.skhdrc
+///
+/// # Returns
+/// * `Ok(String)` - Path to first existing config file with detailed info
+/// * `Err(String)` if no config file found (includes searched paths)
+#[tauri::command]
+pub async fn get_active_config_path() -> Result<ActiveConfigPathInfo, String> {
+    let effective = effective_variant_async().await;
+    let variant = effective.variant;
+
+    match get_config_path_for_variant(variant) {
+        Ok(path) => Ok(ActiveConfigPathInfo {
+            path,
+            variant: variant.to_string(),
+            searched_paths: crate::utils::path::get_config_paths_for_variant(variant),
+        }),
+        Err(e) => Err(e),
+    }
+}
+
+/// Information about the active config path
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ActiveConfigPathInfo {
+    /// The path to the active config file
+    pub path: String,
+    /// Which variant was used to find it
+    pub variant: String,
+    /// All paths that were searched
+    pub searched_paths: Vec<String>,
 }
 
 /// Load skhd configuration from file

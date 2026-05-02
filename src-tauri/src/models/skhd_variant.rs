@@ -12,6 +12,15 @@ pub enum SkhdVariant {
     Zig,
 }
 
+impl std::fmt::Display for SkhdVariant {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SkhdVariant::Original => write!(f, "original"),
+            SkhdVariant::Zig => write!(f, "zig"),
+        }
+    }
+}
+
 /// Represents how the variant was detected
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DetectionSource {

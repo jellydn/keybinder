@@ -1,0 +1,236 @@
+{
+  "project": "Keybinder",
+  "branchName": "ralph/skhd-zig-support",
+  "description": "Add first-class support for jackielii/skhd.zig as a selectable variant alongside the original koekeishiya/skhd. Includes auto-detection (PATH, launchd, Homebrew, .app bundle), settings UI for variant choice, variant-aware service management (skhd.zig uses SMAppService and skhd --start-service / --stop-service / --restart-service rather than brew services and a separate plist label com.jackielii.skhd), variant-aware config path lookup (XDG support), variant-aware log tailer (~/Library/Logs/skhd.log), parser extensions for skhd.zig directives (.alias, .define, .path, .device, .remap, mouse1-mouse5, backtick, @group, mode-with-command) rendered read-only, status badge showing the active variant, install guidance with Homebrew tap (brew install jackielii/tap/skhd-zig), one-click 'Install Service' / 'Uninstall Service' buttons, and a migration wizard that stops original skhd, prompts for brew install, registers and starts skhd.zig.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Add SkhdVariant enum and variant detector service",
+      "description": "As a developer, I need a typed representation of the active skhd variant and a function that detects which one is installed/active so other commands can branch behavior.",
+      "acceptanceCriteria": [
+        "Add SkhdVariant { Original, Zig } enum in src-tauri/src/models/ and mirror in src/types.ts",
+        "Add src-tauri/src/services/variant_detector.rs with detect_variant() returning DetectedVariant { variant, binary_path, plist_label, source } where source is one of Running, Plist, Homebrew, Path, AppBundle, None",
+        "Detection order: (1) running launchd job via launchctl list for com.jackielii.skhd then com.koekeishiya.skhd; (2) Homebrew formulae brew list skhd-zig and brew list skhd; (3) which skhd plus skhd --version fingerprint (skhd.zig output contains 'zig' or 'skhd.zig'); (4) .app bundle fallback at /Applications/skhd.app/Contents/MacOS/skhd treated as Zig; (5) None",
+        "Expose Tauri command detect_skhd_variant returning the DetectedVariant snapshot",
+        "Unit tests in src-tauri/tests/ mock command outputs and filesystem checks; cover each detection branch including the .app bundle fallback",
+        "cargo test passes",
+        "Typecheck passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Completed: Added SkhdVariant enum, DetectionSource enum, DetectedVariant struct, variant_detector service with detect_variant(), detect_variant_async(), and Tauri command. Created frontend types and variantService.ts. All tests pass (14 new unit tests + 90 existing). Also fixed pre-existing clippy warning in logs.rs."
+    },
+    {
+      "id": "US-002",
+      "title": "Persist skhd_variant preference in settings",
+      "description": "As a user, I want my variant choice (auto / original / zig) to persist between launches.",
+      "acceptanceCriteria": [
+        "Add skhd_variant field to settings storage with values 'auto' | 'original' | 'zig' and default 'auto'",
+        "Tauri commands get_skhd_variant_setting and set_skhd_variant_setting are registered and typed in src/services/",
+        "Add effective_variant() helper that returns the user's choice when not 'auto', otherwise the result of detect_variant() from US-001",
+        "When the chosen variant is not installed, effective_variant() still returns it but commands surface a non-blocking warning string",
+        "Tests cover all three setting values and missing-binary fallback behavior",
+        "cargo test passes",
+        "Typecheck passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Completed: Added SkhdVariantSetting enum (auto/original/zig), Settings model, SettingsManager service with JSON persistence in ~/Library/Application Support/keybinder/settings.json, effective_variant() helper with warning support for missing variants, and 4 Tauri commands (get_skhd_variant_setting, set_skhd_variant_setting, get_effective_variant, get_settings). Created frontend types and settingsService.ts. All tests pass (118 total Rust tests, 6 frontend tests)."
+    },
+    {
+      "id": "US-003",
+      "title": "Variant-aware service manager (start/stop/restart/reload/status)",
+      "description": "As a user, I want service controls to use the correct commands for whichever variant is active so start/stop/restart actually work for skhd.zig.",
+      "acceptanceCriteria": [
+        "Refactor src-tauri/src/services/service_manager.rs so get_status, start, stop, restart, and reload dispatch on effective_variant()",
+        "Original skhd path keeps current behavior: launchctl bootstrap/bootout against ~/Library/LaunchAgents/com.koekeishiya.skhd.plist, brew services restart skhd for restart, skhd --reload for reload",
+        "skhd.zig path uses: status via launchctl list for com.jackielii.skhd plus skhd --status output; start runs skhd --start-service; stop runs skhd --stop-service; restart runs skhd --restart-service; reload runs skhd --reload",
+        "Generalize launchctl list parser to accept a label parameter rather than hardcoding com.koekeishiya.skhd",
+        "All error messages identify the variant (e.g. 'skhd.zig: failed to start service: ...')",
+        "Existing service tests still pass; new tests cover each skhd.zig command dispatch with mocked outputs",
+        "cargo test passes",
+        "Typecheck passes"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "Completed: Refactored ServiceManager to dispatch on effective_variant(). Original variant uses launchctl bootstrap/bootout with com.koekeishiya.skhd.plist, brew services restart, and skhd --reload. Zig variant uses skhd --start-service, --stop-service, --restart-service, --reload, plus launchctl list for com.jackielii.skhd. Added generalized get_status_from_launchctl(label) method. Added variant-specific error messages prefixed with 'skhd:' or 'skhd.zig:'. Added new commands: start_service, stop_service, restart_service, install_service, uninstall_service. Created integration tests in tests/service_manager_test.rs (16 tests). All tests pass (5 unit tests + 16 integration tests + 89 other tests)."
+    },
+    {
+      "id": "US-004",
+      "title": "Variant-aware config path resolution",
+      "description": "As a user with an XDG-style setup or a skhd.zig-only install, I want Keybinder to find my skhdrc the same way skhd.zig does.",
+      "acceptanceCriteria": [
+        "When effective_variant() is Zig, get_config_path checks $XDG_CONFIG_HOME/skhd/skhdrc first, then ~/.config/skhd/skhdrc, then ~/.skhdrc",
+        "When effective_variant() is Original, get_config_path checks ~/.config/skhd/skhdrc then ~/.skhdrc (unchanged)",
+        "Error messages list every path that was searched",
+        "Unit tests cover both variants and the XDG override",
+        "cargo test passes",
+        "Typecheck passes"
+      ],
+      "priority": 4,
+      "passes": true,
+      "notes": "Completed: Added get_config_path_for_variant() in utils/path.rs with variant-specific search order. Original checks ~/.config/skhd/skhdrc then ~/.skhdrc. Zig checks $XDG_CONFIG_HOME/skhd/skhdrc first, then ~/.config/skhd/skhdrc, then ~/.skhdrc. Added get_config_paths_for_variant() to list all searched paths for error messages. Added Tauri command get_active_config_path() returning ActiveConfigPathInfo { path, variant, searched_paths }. Added Display trait for SkhdVariant. Updated AGENTS.md with config path pattern. All tests pass (5 new unit tests + 108 existing tests)."
+    },
+    {
+      "id": "US-005",
+      "title": "Parser support for skhd.zig directives: .alias, .define, .path",
+      "description": "As a user editing a skhd.zig config in Keybinder, I want non-binding directives parsed without errors so the rest of my file is still recognized.",
+      "acceptanceCriteria": [
+        "Update src-tauri/src/parser/grammar.pest to recognize .alias $name <modifier_combo|keycode>",
+        "Grammar recognizes .define <name> [ \"app1\", \"app2\" ] (process group form)",
+        "Grammar recognizes .define <name> : <command_template> with {{1}} positional placeholders",
+        "Grammar recognizes .path \"<dir>\" entries",
+        "Update parser/ast.rs adding ZigDirective sub-enum so original-skhd parsing is unchanged",
+        "Parser does not emit syntax errors when fed a config containing only these directives plus standard hotkeys",
+        "Unit tests parse representative snippets and assert AST node kinds",
+        "cargo test passes",
+        "Typecheck passes"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-006",
+      "title": "Parser support for skhd.zig: .device, .remap, mouse keys, @group, mode-with-command",
+      "description": "As a user, I want the remaining skhd.zig syntax extensions to parse so my full config opens cleanly.",
+      "acceptanceCriteria": [
+        "Grammar accepts .device <alias> { vendor: 0xVVVV, product: 0xPPPP }",
+        "Grammar accepts .remap <key> [<device>] : <key> (1:1 form)",
+        "Grammar accepts .remap <key> [<device>] { tap: ..., hold: ..., timeout: 200ms, permissive_hold: on, hold_on_other_key_press: off, retro_tap: off } (block form)",
+        "Lexer recognizes mouse1, mouse2, mouse3, mouse4, mouse5 and backtick as key tokens",
+        "Grammar accepts @<group> references on the LHS of proc_map list entries",
+        "Grammar accepts mode activation with inline command: <binding> ; <mode> : <command>",
+        "AST nodes added for each new construct under the ZigDirective sub-enum",
+        "Unit tests parse the examples from skhd.zig SYNTAX.md without errors",
+        "cargo test passes",
+        "Typecheck passes"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-007",
+      "title": "Variant-aware log tailer",
+      "description": "As a user on skhd.zig, I want the in-app log viewer to read ~/Library/Logs/skhd.log instead of /tmp/skhd_$USER.log.",
+      "acceptanceCriteria": [
+        "src-tauri/src/services/log_tailer.rs computes the log path based on effective_variant()",
+        "Original variant path: /tmp/skhd_$USER.log (unchanged)",
+        "skhd.zig variant path: ~/Library/Logs/skhd.log",
+        "Empty-state message in the log viewer lists the path that was searched",
+        "Unit tests cover both variants",
+        "cargo test passes",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-008",
+      "title": "Settings UI: variant picker",
+      "description": "As a user, I want a settings panel where I can choose Auto, skhd (original), or skhd.zig.",
+      "acceptanceCriteria": [
+        "Settings UI exposes a radio group / segmented control with options: Auto, skhd (original), skhd.zig",
+        "Selecting a value persists immediately via set_skhd_variant_setting",
+        "Per-variant detected state is shown: 'Installed (path)', 'Not found', or 'Running' badge — uses detect_skhd_variant from US-001",
+        "When the chosen variant is not installed, a yellow warning row links to the install guidance modal (US-009)",
+        "Component is built with Svelte 5 runes ($state, $derived, $props)",
+        "bun run check passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-009",
+      "title": "Status indicator badge showing active variant",
+      "description": "As a user, I want to see which skhd variant is active at a glance.",
+      "acceptanceCriteria": [
+        "Existing service-status component displays a small pill badge labeled 'skhd' or 'skhd.zig'",
+        "Badge tooltip shows the binary path and launchd label",
+        "Badge updates reactively after the variant preference changes in settings",
+        "Component uses Svelte 5 runes; no on:click syntax — onclick={} only",
+        "bun run check passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-010",
+      "title": "Install guidance modal for missing variants",
+      "description": "As a user without the chosen variant installed, I want clear install instructions inside the app.",
+      "acceptanceCriteria": [
+        "When effective_variant() resolves but detection returns None, show a dismissible info card / modal",
+        "skhd.zig modal contains: headline 'skhd.zig is not installed', code block with 'brew install jackielii/tap/skhd-zig' and a copy-to-clipboard button, secondary code block with 'skhd --install-service' and copy button, link to https://github.com/jackielii/skhd.zig opened via tauri-plugin-opener or shell.open",
+        "Original skhd modal contains 'brew install koekeishiya/formulae/skhd' and the upstream repo link",
+        "Card has a 'Check again' button that re-runs detection",
+        "Reuses existing copy-to-clipboard helper if one already exists in the codebase",
+        "bun run check passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-011",
+      "title": "One-click Install/Uninstall Service buttons for skhd.zig",
+      "description": "As a user who just installed the skhd.zig binary, I want a one-click 'Install Service' button so I don't have to drop to the terminal.",
+      "acceptanceCriteria": [
+        "When variant is skhd.zig and the launchd agent is not registered, settings shows an 'Install Service' button",
+        "Clicking 'Install Service' invokes a Tauri command that runs `skhd --install-service` and surfaces stdout/stderr inline",
+        "After success, status auto-refreshes and the button is replaced with 'Uninstall Service' (runs `skhd --uninstall-service`)",
+        "A confirmation dialog appears before uninstall",
+        "Errors from the command are shown inline with the underlying output",
+        "cargo test covers the Tauri command with mocked process execution",
+        "bun run check passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 11,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-012",
+      "title": "Migration wizard: original skhd to skhd.zig",
+      "description": "As an existing original-skhd user, I want a guided migration flow so I don't have to manually stop, install, register, and start things.",
+      "acceptanceCriteria": [
+        "New 'Migrate to skhd.zig' entry point in settings, visible only when original skhd is detected",
+        "Step 1 Pre-flight: show current original-skhd status and a checklist of what will happen",
+        "Step 2 Stop original: stops com.koekeishiya.skhd via existing service-manager logic",
+        "Step 3 Install skhd.zig: shows 'brew install jackielii/tap/skhd-zig' with copy button; user confirms 'I've installed it' to proceed (no automatic brew invocation)",
+        "Step 4 Register service: runs `skhd --install-service`",
+        "Step 5 Start service: runs `skhd --start-service`",
+        "Step 6 Verify: runs `skhd --status` and shows the result; offers 'Switch variant preference to skhd.zig' toggle that calls set_skhd_variant_setting('zig')",
+        "Each step shows pass/fail state and is skippable; cancellation at any step is non-destructive (the original skhd plist is not deleted)",
+        "Wizard does not modify the user's skhdrc config file",
+        "cargo test covers wizard step commands with mocked process execution",
+        "bun run check passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 12,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-013",
+      "title": "Documentation updates for skhd.zig support",
+      "description": "As a developer or user reading the project docs, I want skhd.zig support to be discoverable.",
+      "acceptanceCriteria": [
+        "README.md gains a 'Supported skhd variants' subsection mentioning skhd.zig with the install command and a callout that skhd.zig is the actively-developed fork",
+        "CLAUDE.md / AGENTS.md note the variant abstraction in the architecture section",
+        "CHANGELOG.md gains an Unreleased entry summarizing the variant support, parser extensions, migration wizard, and new commands",
+        "bun run check passes"
+      ],
+      "priority": 13,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}

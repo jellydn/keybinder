@@ -1,0 +1,100 @@
+# Ralph Progress Log
+Started: Sat May  2 13:18:39 +08 2026
+---
+
+## Codebase Patterns
+- Rust models use serde::{Deserialize, Serialize} for Tauri IPC
+- DetectionSource uses #[serde(rename = "snake_case")] for JSON serialization
+- Commands use spawn_blocking for async operations that run shell commands
+- Frontend services wrap Tauri invoke() calls with typed TypeScript interfaces
+- Tests in src-tauri/tests/ are integration tests using #[test]
+
+## Sat May 2 13:35:00 +08 2026 - US-001
+Session: https://opencodewhatever (placeholder)
+- Implemented US-001: Add SkhdVariant enum and variant detector service
+- Files changed:
+  - src-tauri/src/models/skhd_variant.rs (new)
+  - src-tauri/src/services/variant_detector.rs (new)
+  - src-tauri/src/commands/variant.rs (new)
+  - src-tauri/tests/variant_detector_test.rs (new)
+  - src/services/variantService.ts (new)
+  - src/types.ts (updated with DetectedVariant types)
+  - src-tauri/src/models/mod.rs (exports)
+  - src-tauri/src/services/mod.rs (exports)
+  - src-tauri/src/commands/mod.rs (exports)
+  - src-tauri/src/lib.rs (command registration)
+  - src-tauri/src/commands/logs.rs (fixed pre-existing clippy warning)
+- **Learnings for future iterations:**
+  - The variant detection order is: launchd running jobs → Homebrew → PATH with version fingerprint → .app bundle
+  - skhd.zig is fingerprinted by checking if `skhd --version` output contains "zig" or "skhd.zig"
+  - All serde enums need explicit rename attributes to match TypeScript types
+  - The codebase uses tokio::task::spawn_blocking for shell command execution
+  - Tests follow a pattern of testing serialization roundtrips and struct construction
+   - Cargo.toml doesn't need changes for new modules - they use mod.rs to expose them
+---
+
+## Sat May 2 14:35:00 +08 2026 - US-002
+Session: https://opncd.ai/s/[share-id]
+- Implemented US-002: Persist skhd_variant preference in settings
+- Files changed:
+  - src-tauri/src/models/settings.rs (new) - SkhdVariantSetting enum and Settings struct
+  - src-tauri/src/services/settings.rs (new) - SettingsManager with JSON persistence
+  - src-tauri/src/commands/settings.rs (new) - Tauri commands for settings
+  - src/services/settingsService.ts (new) - Frontend settings service
+  - src/types.ts (updated) - TypeScript types for settings
+  - src-tauri/src/models/mod.rs (exports)
+  - src-tauri/src/services/mod.rs (exports)
+  - src-tauri/src/commands/mod.rs (exports)
+  - src-tauri/src/lib.rs (command registration and state management)
+- **Learnings for future iterations:**
+  - Settings are stored in ~/Library/Application Support/keybinder/settings.json (macOS)
+  - The `dirs` crate provides platform-appropriate config directories
+  - SettingsManager uses std::sync::Mutex for thread-safe state access
+  - effective_variant() returns both the variant and a warning if not installed
+  - Pattern: Load settings on app start via State<SettingsState> managed in lib.rs
+  - Settings serialization uses serde_json::to_string_pretty for human-readable JSON
+  - When testing settings, use tempfile::TempDir to isolate test data
+  - Pattern for Tauri state: create state struct wrapping the manager, impl Default and new()
+---
+
+## Sat May 2 16:40:00 +08 2026 - US-003
+Session: https://opncd.ai/s/[share-id]
+- Implemented US-003: Variant-aware service manager (start/stop/restart/reload/status)
+- Files changed:
+  - src-tauri/src/services/service_manager.rs (refactored - variant-aware dispatch)
+  - src-tauri/src/commands/service.rs (added start/stop/restart/install/uninstall commands)
+  - src-tauri/src/lib.rs (registered new commands)
+  - src-tauri/tests/service_manager_test.rs (new - 16 integration tests)
+- **Learnings for future iterations:**
+  - ServiceManager now dispatches all operations based on effective_variant() from settings
+  - Original skhd uses: launchctl bootstrap/bootout with com.koekeishiya.skhd.plist, brew services restart, skhd --reload
+  - skhd.zig uses: skhd --start-service, --stop-service, --restart-service, --reload, plus launchctl list for com.jackielii.skhd
+  - Error messages now prefix with variant name: "skhd: ..." or "skhd.zig: ..."
+  - get_status_from_launchctl(label) is generalized to accept any plist label
+  - Added install_service and uninstall_service commands specifically for skhd.zig (original uses plist files)
+  - All service manager methods are async and use tokio::sync::Mutex for reload locking
+  - The skhd.zig config path search prioritizes XDG paths ($XDG_CONFIG_HOME/skhd/skhdrc, then ~/.config/skhd/skhdrc, then ~/.skhdrc)
+  - Integration tests in tests/ directory follow the existing pattern (use keybinder_lib::services::ServiceManager)
+---
+
+## Sat May 2 18:35:00 +08 2026 - US-004
+Session: https://opncd.ai/s/[share-id]
+- Implemented US-004: Variant-aware config path resolution
+- Files changed:
+  - src-tauri/src/utils/path.rs (added variant-aware functions)
+  - src-tauri/src/utils/mod.rs (exports)
+  - src-tauri/src/models/skhd_variant.rs (Display trait)
+  - src-tauri/src/commands/config.rs (get_active_config_path command)
+  - src-tauri/src/commands/mod.rs (exports)
+  - src-tauri/src/lib.rs (command registration)
+  - AGENTS.md (config path pattern documentation)
+- **Learnings for future iterations:**
+  - Original skhd search order: ~/.config/skhd/skhdrc → ~/.skhdrc (no XDG)
+  - skhd.zig search order: $XDG_CONFIG_HOME/skhd/skhdrc → ~/.config/skhd/skhdrc → ~/.skhdrc
+  - Error messages should list all searched paths for better debugging
+  - get_config_paths_for_variant() returns the list without checking existence (useful for error reporting)
+  - get_config_path_for_variant() actually checks paths and returns the first existing one
+  - Added Display trait to SkhdVariant for easy string conversion
+  - ActiveConfigPathInfo struct provides: path, variant, searched_paths for frontend
+  - Pattern: Keep variant-specific logic in utils/path.rs, expose via Tauri command in commands/config.rs
+---

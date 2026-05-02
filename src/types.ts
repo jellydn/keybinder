@@ -358,3 +358,30 @@ export interface DetectedVariant {
 	/** How the variant was detected */
 	source: DetectionSource;
 }
+
+/**
+ * User's preferred skhd variant setting
+ */
+export type SkhdVariantSetting = "auto" | "original" | "zig";
+
+/**
+ * App settings that persist between launches
+ */
+export interface Settings {
+	/** User's preferred skhd variant */
+	skhd_variant: SkhdVariantSetting;
+}
+
+/**
+ * Result from effective variant computation
+ */
+export interface EffectiveVariantResponse {
+	/** The effective variant to use: 'original' | 'zig' */
+	variant: SkhdVariant;
+	/** Whether the variant was auto-detected */
+	is_auto_detected: boolean;
+	/** Optional warning message if chosen variant is not installed */
+	warning: string | null;
+	/** The detection source and metadata (if auto mode) */
+	detected: DetectedVariant | null;
+}

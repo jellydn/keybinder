@@ -11,6 +11,7 @@ pub mod utils;
 
 use commands::config::ConfigState;
 use commands::logs::LogStreamState;
+use commands::settings::SettingsState;
 use commands::testing::ExecutionState;
 use services::{ServiceManager, ThemeMonitorState};
 
@@ -23,6 +24,7 @@ pub fn run() {
         .manage(LogStreamState::default())
         .manage(ServiceManager::new())
         .manage(ThemeMonitorState::new())
+        .manage(SettingsState::new())
         .invoke_handler(tauri::generate_handler![
             commands::applications::get_installed_applications,
             commands::config::detect_active_config,
@@ -62,6 +64,10 @@ pub fn run() {
             commands::theme::start_theme_monitor,
             commands::theme::stop_theme_monitor,
             commands::variant::detect_skhd_variant,
+            commands::settings::get_skhd_variant_setting,
+            commands::settings::set_skhd_variant_setting,
+            commands::settings::get_effective_variant,
+            commands::settings::get_settings,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

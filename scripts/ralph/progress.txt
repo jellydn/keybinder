@@ -8,6 +8,9 @@ Started: Sat May  2 13:18:39 +08 2026
 - Commands use spawn_blocking for async operations that run shell commands
 - Frontend services wrap Tauri invoke() calls with typed TypeScript interfaces
 - Tests in src-tauri/tests/ are integration tests using #[test]
+- PEST grammar: Use simplified flat rules for directives, parse content details in Rust code
+- ZigDirective enum uses `#[serde(tag = "type", rename_all = "snake_case")]` for proper JSON serialization with tagged variants
+- Parser tests go in `src/parser/mod.rs` under `#[cfg(test)] mod tests`
 
 ## Sat May 2 13:35:00 +08 2026 - US-001
 Session: https://opencodewhatever (placeholder)
@@ -97,4 +100,23 @@ Session: https://opncd.ai/s/[share-id]
   - Added Display trait to SkhdVariant for easy string conversion
   - ActiveConfigPathInfo struct provides: path, variant, searched_paths for frontend
   - Pattern: Keep variant-specific logic in utils/path.rs, expose via Tauri command in commands/config.rs
+---
+
+## Sat May 2 20:50:00 +08 2026 - US-005
+Session: https://opncd.ai/s/[share-id]
+- Implemented US-005: Parser support for skhd.zig directives: .alias, .define, .path
+- Files changed:
+  - src-tauri/src/parser/grammar.pest (updated with directive_line rule, mouse keys, extended modifiers)
+  - src-tauri/src/parser/ast.rs (added ZigDirective enum with Alias, DefineGroup, DefineCommand, Path, Shell, Blacklist, Load variants)
+  - src-tauri/src/parser/mod.rs (added content-based directive parsing, helper functions)
+- **Learnings for future iterations:**
+  - PEST grammar: In the current grammar setup, directive_line rule using `{ "." ~ directive_keyword ~ directive_content ~ NEWLINE }` creates a flat structure
+  - Parsing strategy: Parse directive keyword/content in Rust code rather than in grammar for flexibility
+  - The parser now recognizes: .alias, .define (group and command forms), .path (single and list forms), .shell, .blacklist, .load
+  - Added mouse key support (mouse1-mouse5), backtick key, and extended modifiers (hyper, meh, lcmd/rcmd, lctrl/rctrl, etc.)
+  - ZigDirective enum uses `#[serde(tag = "type", rename_all = "snake_case")]` for proper JSON serialization
+  - AST provides helpers: directives(), has_zig_directives(), directive_counts() for analyzing parsed configs
+  - All directives are treated as read-only - they're parsed but not executed by Keybinder
+  - 22 parser tests added covering all directive types plus existing shortcut tests
+  - Total test count: 133 Rust tests (1 pre-existing failure in backup test unrelated to parser), 6 frontend tests
 ---

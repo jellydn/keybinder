@@ -87,8 +87,8 @@
         "Typecheck passes"
       ],
       "priority": 5,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Completed: Updated grammar.pest with simplified directive_line rule that matches all skhd.zig directives (.alias, .define, .path, .shell, .blacklist, .load). Added ZigDirective enum variants in ast.rs with proper serde tagging. Parser/mod.rs updated with content-based directive parsing functions. Also added support for mouse keys (mouse1-mouse5), backtick key, and extended modifiers (hyper, meh, lcmd, rcmd, etc.). All 22 parser tests pass. cargo test shows 133 passed (1 pre-existing failure unrelated to parser). Typecheck passes."
     },
     {
       "id": "US-006",

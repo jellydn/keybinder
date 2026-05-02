@@ -49,6 +49,10 @@ The app supports both original `koekeishiya/skhd` and `jackielii/skhd.zig` fork:
   - Implementation: `utils/path.rs` has `get_config_path_for_variant()` with variant-specific search order
   - Error messages list all searched paths for better debugging
   - Command: `get_active_config_path()` returns `ActiveConfigPathInfo { path, variant, searched_paths }`
+- **Parser Extensions**: `parser/` uses PEST grammar with skhd.zig directive support
+  - ZigDirective enum in `parser/ast.rs` represents parsed directives (read-only)
+  - Supports: `.alias`, `.define` (group and command forms), `.path`, `.shell`, `.blacklist`, `.load`
+  - Also recognizes mouse keys (mouse1-5), backtick, extended modifiers (hyper, meh, lcmd/rcmd, etc.)
 
 ## Key Gotchas
 

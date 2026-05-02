@@ -1,27 +1,48 @@
 // skhd Configuration Grammar
 // Based on skhd syntax: <modifiers> - <key> : <command>
+// Extended for skhd.zig: .alias, .define, .path directives
 
 WHITESPACE = _{ " " | "\t" }
 
-// Main structure
-config_file = { SOI ~ (comment | shortcut | empty_line)* ~ EOI }
+// Main structure - now supports directives in addition to shortcuts
+// Order matters: try comment first, then directives (for skhd.zig), then shortcuts
+config_file = { SOI ~ (comment | empty_line | directive | shortcut)* ~ EOI }
 empty_line = { WHITESPACE* ~ NEWLINE }
 
 // Comments
 comment = { "#" ~ (!NEWLINE ~ ANY)* ~ NEWLINE }
 NEWLINE = { "\r\n" | "\n" }
 
+// ============================================================
+// skhd.zig Directives (read-only support - parsed but not executed)
+// ============================================================
+
+// Simple directive line: starts with dot, followed by keyword, then content until newline
+// Using PUSH/POP to handle the directive parsing more reliably
+directive = { directive_line }
+directive_line = { "." ~ directive_keyword ~ directive_content ~ NEWLINE }
+directive_keyword = { 
+    "alias" | "define" | "path" | "shell" | "blacklist" | "load" 
+}
+directive_content = { (!NEWLINE ~ ANY)* }
+
+// ============================================================
+// Original skhd syntax (unchanged)
+// ============================================================
+
 // Keyboard shortcut
 shortcut = { modifiers? ~ "-" ~ key ~ ":" ~ command ~ NEWLINE }
 
 // Modifiers (can be combined with +)
 modifiers = { modifier ~ ("+" ~ modifier)* }
-modifier = { "cmd" | "alt" | "shift" | "ctrl" | "fn" }
+modifier = { "cmd" | "alt" | "shift" | "ctrl" | "fn" | "hyper" | "meh" |
+             "lcmd" | "rcmd" | "lctrl" | "rctrl" | "lalt" | "ralt" | "lshift" | "rshift" }
 
 // Key (any alphanumeric, special chars, or function keys)
 key = @{
     function_key
     | special_key
+    | mouse_key
     | alphanumeric_key
 }
 
@@ -34,8 +55,11 @@ function_key = {
 special_key = {
     "return" | "tab" | "space" | "backspace" | "delete" |
     "escape" | "home" | "end" | "pageup" | "pagedown" |
-    "insert" | "left" | "right" | "up" | "down"
+    "insert" | "left" | "right" | "up" | "down" | "backtick"
 }
+
+// Mouse buttons (skhd.zig)
+mouse_key = { "mouse1" | "mouse2" | "mouse3" | "mouse4" | "mouse5" }
 
 alphanumeric_key = { ASCII_ALPHANUMERIC | "_" | "-" | "=" | "[" | "]" |
                      "\\" | ";" | "'" | "," | "." | "/" | "`" }

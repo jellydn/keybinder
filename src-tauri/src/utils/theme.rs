@@ -5,7 +5,7 @@
 use objc::rc::autoreleasepool;
 use objc::runtime::{Class, Object};
 use objc::{msg_send, sel, sel_impl};
-use std::ffi::{CStr, c_char};
+use std::ffi::{c_char, CStr};
 
 /// Detect the current macOS system theme preference
 ///
@@ -45,8 +45,8 @@ fn detect_theme_via_objc() -> Result<String, String> {
     autoreleasepool(|| unsafe {
         // Get NSUserDefaults class
         // Safety: Class::get is safe - it either returns Some(class) or None
-        let user_defaults_class = Class::get("NSUserDefaults")
-            .ok_or("NSUserDefaults class not available")?;
+        let user_defaults_class =
+            Class::get("NSUserDefaults").ok_or("NSUserDefaults class not available")?;
 
         // Get standard user defaults instance
         // Safety: msg_send! calls Objective-C method; we null-check the result
@@ -58,12 +58,12 @@ fn detect_theme_via_objc() -> Result<String, String> {
 
         // Create NSString for the key "AppleInterfaceStyle"
         // Safety: Class::get is safe - checked for None
-        let nsstring_class = Class::get("NSString")
-            .ok_or("NSString class not available")?;
+        let nsstring_class = Class::get("NSString").ok_or("NSString class not available")?;
 
         // Safety: c-string literal is null-terminated; msg_send! result is null-checked
         #[allow(unexpected_cfgs)]
-        let key: *mut Object = msg_send![nsstring_class, stringWithUTF8String: c"AppleInterfaceStyle".as_ptr()];
+        let key: *mut Object =
+            msg_send![nsstring_class, stringWithUTF8String: c"AppleInterfaceStyle".as_ptr()];
         if key.is_null() {
             return Err("Failed to create NSString key".to_string());
         }
@@ -88,7 +88,8 @@ fn detect_theme_via_objc() -> Result<String, String> {
         // Safety: CStr::from_ptr requires valid null-terminated C string
         // The UTF8String method guarantees this for NSString objects
         let c_str = CStr::from_ptr(utf8_string);
-        let style_str = c_str.to_str()
+        let style_str = c_str
+            .to_str()
             .map_err(|_| "Failed to convert NSString to UTF-8")?;
 
         // "Dark" means dark mode, anything else (or missing) means light mode

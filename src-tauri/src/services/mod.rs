@@ -8,6 +8,7 @@ pub mod service_manager;
 pub mod template_loader;
 pub mod theme_monitor;
 pub mod validation;
+pub mod variant_detector;
 
 pub use app_discovery::{discover_applications, parse_app_bundle};
 pub use backup::{create_backup, list_backups, restore_backup};
@@ -18,3 +19,4 @@ pub use service_manager::ServiceManager;
 pub use template_loader::{get_categories, get_templates};
 pub use theme_monitor::ThemeMonitorState;
 pub use validation::{validate_config, validate_shortcut};
+pub use variant_detector::{detect_variant, detect_variant_async};

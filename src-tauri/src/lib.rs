@@ -61,6 +61,7 @@ pub fn run() {
             commands::theme::get_system_theme,
             commands::theme::start_theme_monitor,
             commands::theme::stop_theme_monitor,
+            commands::variant::detect_skhd_variant,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

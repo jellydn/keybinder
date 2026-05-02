@@ -10,6 +10,7 @@ pub mod templates;
 pub mod testing;
 pub mod theme;
 pub mod validation;
+pub mod variant;
 
 // Re-export commands for easy access
 pub use applications::get_installed_applications;
@@ -23,3 +24,4 @@ pub use templates::{generate_command_from_template, get_command_categories, get_
 pub use testing::{cancel_shortcut_execution, execute_shortcut_command, execute_test_command, test_shortcut};
 pub use theme::{get_system_theme, start_theme_monitor, stop_theme_monitor};
 pub use validation::{validate_config, validate_shortcut};
+pub use variant::detect_skhd_variant;

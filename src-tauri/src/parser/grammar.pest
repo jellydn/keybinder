@@ -1,27 +1,50 @@
 // skhd Configuration Grammar
 // Based on skhd syntax: <modifiers> - <key> : <command>
+// Extended for skhd.zig: .alias, .define, .path directives
 
 WHITESPACE = _{ " " | "\t" }
 
-// Main structure
-config_file = { SOI ~ (comment | shortcut | empty_line)* ~ EOI }
+// Main structure - now supports directives in addition to shortcuts
+// Order matters: try comment first, then directives (for skhd.zig), then shortcuts
+config_file = { SOI ~ (comment | empty_line | directive | shortcut)* ~ EOI }
 empty_line = { WHITESPACE* ~ NEWLINE }
 
 // Comments
 comment = { "#" ~ (!NEWLINE ~ ANY)* ~ NEWLINE }
 NEWLINE = { "\r\n" | "\n" }
 
+// ============================================================
+// skhd.zig Directives (read-only support - parsed but not executed)
+// ============================================================
+
+// Preserve known and future directives. Bracket/brace bodies may span lines.
+directive = { directive_line }
+directive_line = { "." ~ directive_keyword ~ directive_content ~ NEWLINE }
+directive_keyword = @{ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
+directive_content = { multiline_directive_content | (!NEWLINE ~ ANY)* }
+multiline_directive_content = { brace_directive_content | bracket_directive_content }
+brace_directive_content = { (!"{" ~ !NEWLINE ~ ANY)* ~ brace_block ~ (!NEWLINE ~ ANY)* }
+bracket_directive_content = { (!"[" ~ !NEWLINE ~ ANY)* ~ bracket_block ~ (!NEWLINE ~ ANY)* }
+bracket_block = { "[" ~ (!"]" ~ ANY)* ~ "]" }
+brace_block = { "{" ~ (!"}" ~ ANY)* ~ "}" }
+
+// ============================================================
+// Original skhd syntax (unchanged)
+// ============================================================
+
 // Keyboard shortcut
 shortcut = { modifiers? ~ "-" ~ key ~ ":" ~ command ~ NEWLINE }
 
 // Modifiers (can be combined with +)
 modifiers = { modifier ~ ("+" ~ modifier)* }
-modifier = { "cmd" | "alt" | "shift" | "ctrl" | "fn" }
+modifier = { "cmd" | "alt" | "shift" | "ctrl" | "fn" | "hyper" | "meh" |
+             "lcmd" | "rcmd" | "lctrl" | "rctrl" | "lalt" | "ralt" | "lshift" | "rshift" }
 
 // Key (any alphanumeric, special chars, or function keys)
 key = @{
     function_key
     | special_key
+    | mouse_key
     | alphanumeric_key
 }
 
@@ -34,8 +57,11 @@ function_key = {
 special_key = {
     "return" | "tab" | "space" | "backspace" | "delete" |
     "escape" | "home" | "end" | "pageup" | "pagedown" |
-    "insert" | "left" | "right" | "up" | "down"
+    "insert" | "left" | "right" | "up" | "down" | "backtick"
 }
+
+// Mouse buttons (skhd.zig)
+mouse_key = { "mouse1" | "mouse2" | "mouse3" | "mouse4" | "mouse5" }
 
 alphanumeric_key = { ASCII_ALPHANUMERIC | "_" | "-" | "=" | "[" | "]" |
                      "\\" | ";" | "'" | "," | "." | "/" | "`" }

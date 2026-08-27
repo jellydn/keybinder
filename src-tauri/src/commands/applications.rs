@@ -25,7 +25,7 @@ pub async fn get_app_icon(_icon_path: String) -> Result<Option<String>, String> 
     Ok(None)
 }
 
-#[cfg(test)]
+#[cfg(all(test, target_os = "macos"))]
 mod tests {
     use super::*;
 

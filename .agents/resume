@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# This repository has no backing services or per-orb authentication to restore.
+echo "Orb resume complete: no reconnect steps required."

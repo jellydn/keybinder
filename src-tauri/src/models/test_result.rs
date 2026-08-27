@@ -22,7 +22,6 @@ pub struct TestResult {
     pub timestamp: String,
 
     // ===== NEW EXECUTION FIELDS =====
-
     /// Whether this was an actual execution (true) or syntax validation only (false)
     pub executed: bool,
 

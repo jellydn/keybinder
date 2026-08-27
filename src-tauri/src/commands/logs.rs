@@ -261,7 +261,7 @@ pub async fn get_recent_logs(limit: Option<usize>) -> Result<Vec<LogEntry>, Stri
     }
 
     // Sort by timestamp (chronological order)
-    log_entries.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
+    log_entries.sort_by_key(|a| a.timestamp);
 
     Ok(log_entries)
 }

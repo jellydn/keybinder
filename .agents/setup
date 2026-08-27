@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+step() {
+	printf '\n==> %s\n' "$1"
+}
+
+step "Checking Linux build dependencies"
+packages=(
+	build-essential
+	curl
+	file
+	libayatana-appindicator3-dev
+	libgtk-3-dev
+	librsvg2-dev
+	libssl-dev
+	libwebkit2gtk-4.1-dev
+	libxdo-dev
+	patchelf
+	pkg-config
+	unzip
+	wget
+)
+missing_packages=()
+for package in "${packages[@]}"; do
+	if ! dpkg-query -W -f='${Status}' "$package" 2>/dev/null | grep -Fqx 'install ok installed'; then
+		missing_packages+=("$package")
+	fi
+done
+
+if ((${#missing_packages[@]})); then
+	step "Installing missing Linux build dependencies"
+	time sudo apt-get update
+	time sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "${missing_packages[@]}"
+else
+	echo "Linux build dependencies are already installed."
+fi
+
+step "Checking Rust stable toolchain"
+if [[ ! -x "$HOME/.cargo/bin/rustup" ]]; then
+	time curl --proto '=https' --tlsv1.2 -fsSL https://sh.rustup.rs \
+		| sh -s -- -y --profile minimal --default-toolchain stable
+fi
+export PATH="$HOME/.cargo/bin:$PATH"
+
+if ! rustup toolchain list | grep -Eq '^stable(-[^ ]+)? '; then
+	time rustup toolchain install stable --profile minimal
+fi
+rustup default stable >/dev/null
+for component in rustfmt clippy; do
+	if ! rustup component list --toolchain stable | grep -Eq "^${component}-.+ \(installed\)$"; then
+		time rustup component add --toolchain stable "$component"
+	fi
+done
+
+if ! grep -Fq '$HOME/.cargo/env' "$HOME/.bash_profile" 2>/dev/null; then
+	cat >> "$HOME/.bash_profile" <<'EOF'
+
+# Rust toolchain installed for repository development
+[ -f "$HOME/.cargo/env" ] && . "$HOME/.cargo/env"
+EOF
+fi
+
+step "Checking Bun"
+if ! command -v bun >/dev/null 2>&1; then
+	time curl -fsSL https://bun.sh/install | bash
+	export BUN_INSTALL="$HOME/.bun"
+	export PATH="$BUN_INSTALL/bin:$PATH"
+fi
+
+if [[ -x "$HOME/.bun/bin/bun" ]] && ! grep -Fq '$HOME/.bun/bin' "$HOME/.bash_profile" 2>/dev/null; then
+	cat >> "$HOME/.bash_profile" <<'EOF'
+
+# Bun installed for repository development
+export BUN_INSTALL="$HOME/.bun"
+export PATH="$BUN_INSTALL/bin:$PATH"
+EOF
+fi
+
+step "Installing frontend dependencies from bun.lock"
+time bun install --frozen-lockfile
+
+step "Fetching Rust dependencies from src-tauri/Cargo.lock"
+time cargo fetch --locked --manifest-path src-tauri/Cargo.toml
+
+step "Generating SvelteKit metadata"
+time bunx svelte-kit sync
+
+printf '\nOrb setup complete: Bun %s, %s\n' "$(bun --version)" "$(rustc --version)"

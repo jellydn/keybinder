@@ -23,7 +23,7 @@ tempfile = "3.8"
 sha2 = "0.10"
 uuid = { version = "1.6", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
-notify = "6.1"
+notify = "8.0"
 rfd = "0.17"
 dirs = "6.0"
 tokio = { version = "1.40", features = ["process", "time", "macros", "rt", "io-util", "sync"] }

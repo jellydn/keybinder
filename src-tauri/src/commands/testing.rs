@@ -120,7 +120,7 @@ pub fn execute_test_command(
         .arg("-c")
         .arg(format!(
             "echo 'Would execute: {}' && {}",
-            shortcut.command, &shortcut.command
+            shortcut.command, shortcut.command
         ))
         .output()
         .map_err(|e| format!("Failed to execute test: {}", e))?;

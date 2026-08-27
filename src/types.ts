@@ -328,3 +328,54 @@ export interface CommandCategory {
   icon?: string;
   display_order?: number;
 }
+
+/**
+ * skhd variant types
+ */
+export type SkhdVariant = 'original' | 'zig';
+
+/**
+ * How the skhd variant was detected
+ */
+export type DetectionSource = 'running' | 'plist' | 'homebrew' | 'path' | 'app_bundle' | 'none';
+
+/**
+ * Represents a detected skhd variant with metadata
+ */
+export interface DetectedVariant {
+  /** Which variant was detected (null if not detected) */
+  variant: SkhdVariant | null;
+  /** Path to the binary if found */
+  binary_path: string | null;
+  /** Launchd plist label (com.koekeishiya.skhd or com.jackielii.skhd) */
+  plist_label: string | null;
+  /** How the variant was detected */
+  source: DetectionSource;
+}
+
+/**
+ * User's preferred skhd variant setting
+ */
+export type SkhdVariantSetting = 'auto' | 'original' | 'zig';
+
+/**
+ * App settings that persist between launches
+ */
+export interface Settings {
+  /** User's preferred skhd variant */
+  skhd_variant: SkhdVariantSetting;
+}
+
+/**
+ * Result from effective variant computation
+ */
+export interface EffectiveVariantResponse {
+  /** The effective variant to use: 'original' | 'zig' */
+  variant: SkhdVariant;
+  /** Whether the variant was auto-detected */
+  is_auto_detected: boolean;
+  /** Optional warning message if chosen variant is not installed */
+  warning: string | null;
+  /** The detection source and metadata (if auto mode) */
+  detected: DetectedVariant | null;
+}

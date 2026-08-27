@@ -29,12 +29,13 @@ dirs = "6.0"
 tokio = { version = "1.40", features = ["process", "time", "macros", "rt", "io-util", "sync"] }
 regex = "1.10"
 plist = "1.6"
-objc = "0.2"
+
+[target.'cfg(target_os = "macos")'.dependencies]
 block = "0.1"
+objc = "0.2"
 objc-foundation = "0.1"
 objc_id = "0.1"
 
 [dev-dependencies]
 mockall = "0.12"
 regex = "1.10"
-

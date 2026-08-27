@@ -120,7 +120,7 @@ pub fn execute_test_command(
         .arg("-c")
         .arg(format!(
             "echo 'Would execute: {}' && {}",
-            shortcut.command, &shortcut.command
+            shortcut.command, shortcut.command
         ))
         .output()
         .map_err(|e| format!("Failed to execute test: {}", e))?;
@@ -177,7 +177,10 @@ pub async fn execute_shortcut_command(
     {
         let senders = exec_state.cancel_senders.lock().unwrap();
         if senders.contains_key(&shortcut_id) {
-            return Err(format!("Command already executing for shortcut: {}", shortcut_id));
+            return Err(format!(
+                "Command already executing for shortcut: {}",
+                shortcut_id
+            ));
         }
     }
 
@@ -207,7 +210,9 @@ pub async fn execute_shortcut_command(
 
             match e.kind() {
                 std::io::ErrorKind::NotFound => format!("Command not found: {}", shortcut.command),
-                std::io::ErrorKind::PermissionDenied => format!("Permission denied: {}", shortcut.command),
+                std::io::ErrorKind::PermissionDenied => {
+                    format!("Permission denied: {}", shortcut.command)
+                }
                 _ => format!("Failed to spawn command: {}", e),
             }
         })?;
@@ -347,7 +352,9 @@ pub async fn execute_shortcut_command(
                 executed: true,
                 exit_code: None,
                 stdout: Some(String::new()),
-                stderr: Some(String::from("Command timed out after 30 seconds and was terminated")),
+                stderr: Some(String::from(
+                    "Command timed out after 30 seconds and was terminated",
+                )),
                 execution_duration_ms: Some(30000),
                 cancelled: false,
                 timed_out: true,

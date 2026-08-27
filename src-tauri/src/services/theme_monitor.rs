@@ -1,21 +1,27 @@
+use crate::utils::detect_system_theme;
 /// Theme monitoring service for macOS system theme changes
 ///
 /// This service monitors macOS system theme changes via NSDistributedNotificationCenter
 /// and emits Tauri events when the system theme changes during application runtime.
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter};
-use tokio::sync::{Mutex, mpsc};
+#[cfg(target_os = "macos")]
+use tokio::sync::mpsc;
+use tokio::sync::Mutex;
 use tokio::time::{interval, Duration};
-use crate::utils::detect_system_theme;
 
 #[cfg(target_os = "macos")]
-use objc::{msg_send, sel, sel_impl, runtime::{Class, Object}};
+use block::ConcreteBlock;
+#[cfg(target_os = "macos")]
+use objc::{
+    msg_send,
+    runtime::{Class, Object},
+    sel, sel_impl,
+};
 #[cfg(target_os = "macos")]
 use objc_foundation::{INSString, NSString};
 #[cfg(target_os = "macos")]
 use objc_id::{Id, Shared};
-#[cfg(target_os = "macos")]
-use block::ConcreteBlock;
 
 /// Theme polling interval in seconds (fallback only)
 ///
@@ -27,6 +33,7 @@ const THEME_POLL_INTERVAL_SECS: u64 = 2;
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum MonitoringStrategy {
     /// Using NSDistributedNotificationCenter notifications
+    #[cfg(target_os = "macos")]
     Notification,
     /// Using polling fallback
     Polling,
@@ -111,11 +118,13 @@ impl ThemeMonitorState {
                 .ok_or("NSDistributedNotificationCenter class not available")?;
 
             // Get default center
-            let notification_center: *mut Object = msg_send![notification_center_class, defaultCenter];
+            let notification_center: *mut Object =
+                msg_send![notification_center_class, defaultCenter];
             if notification_center.is_null() {
                 return Err("Failed to get default notification center".to_string());
             }
-            let notification_center: Id<Object, Shared> = Id::from_retained_ptr(notification_center);
+            let notification_center: Id<Object, Shared> =
+                Id::from_retained_ptr(notification_center);
 
             // Create the notification name NSString
             let notification_name = NSString::from_str("AppleInterfaceThemeChangedNotification");
@@ -176,9 +185,16 @@ impl ThemeMonitorState {
                 }
 
                 // Emit event if theme changed
-                if last_theme.as_ref().map(|t| t != &current_theme).unwrap_or(true) {
+                if last_theme
+                    .as_ref()
+                    .map(|t| t != &current_theme)
+                    .unwrap_or(true)
+                {
                     if let Some(prev_theme) = &last_theme {
-                        eprintln!("Theme changed from {} to {} (notification)", prev_theme, current_theme);
+                        eprintln!(
+                            "Theme changed from {} to {} (notification)",
+                            prev_theme, current_theme
+                        );
                     }
 
                     // Emit theme-changed event
@@ -220,9 +236,16 @@ impl ThemeMonitorState {
                 match detect_system_theme() {
                     Ok(current_theme) => {
                         // Emit event if theme changed
-                        if last_theme.as_ref().map(|t| t != &current_theme).unwrap_or(true) {
+                        if last_theme
+                            .as_ref()
+                            .map(|t| t != &current_theme)
+                            .unwrap_or(true)
+                        {
                             if let Some(prev_theme) = &last_theme {
-                                eprintln!("Theme changed from {} to {} (polling)", prev_theme, current_theme);
+                                eprintln!(
+                                    "Theme changed from {} to {} (polling)",
+                                    prev_theme, current_theme
+                                );
                             }
 
                             // Emit theme-changed event
@@ -308,8 +331,14 @@ mod notification_tests {
         // Verify initial state has no observer and no strategy
         let state = ThemeMonitorState::new();
 
-        assert!(!state.is_monitoring().await, "Should not be monitoring initially");
-        assert!(state.get_strategy().await.is_none(), "Should have no strategy initially");
+        assert!(
+            !state.is_monitoring().await,
+            "Should not be monitoring initially"
+        );
+        assert!(
+            state.get_strategy().await.is_none(),
+            "Should have no strategy initially"
+        );
 
         let observer = state.observer.lock().await;
         assert!(observer.is_none(), "Should have no observer initially");
@@ -329,8 +358,14 @@ mod notification_tests {
         assert!(result.is_ok(), "stop_monitoring should succeed");
 
         // Verify cleanup
-        assert!(!state.is_monitoring().await, "Should not be monitoring after stop");
-        assert!(state.get_strategy().await.is_none(), "Strategy should be cleared");
+        assert!(
+            !state.is_monitoring().await,
+            "Should not be monitoring after stop"
+        );
+        assert!(
+            state.get_strategy().await.is_none(),
+            "Strategy should be cleared"
+        );
 
         let observer = state.observer.lock().await;
         assert!(observer.is_none(), "Observer should be removed");
@@ -361,11 +396,17 @@ mod notification_tests {
 
         // After setting strategy
         *state.strategy.lock().await = Some(MonitoringStrategy::Notification);
-        assert_eq!(state.get_strategy().await, Some(MonitoringStrategy::Notification));
+        assert_eq!(
+            state.get_strategy().await,
+            Some(MonitoringStrategy::Notification)
+        );
 
         // After setting to polling
         *state.strategy.lock().await = Some(MonitoringStrategy::Polling);
-        assert_eq!(state.get_strategy().await, Some(MonitoringStrategy::Polling));
+        assert_eq!(
+            state.get_strategy().await,
+            Some(MonitoringStrategy::Polling)
+        );
 
         // After clearing
         *state.strategy.lock().await = None;
@@ -389,7 +430,10 @@ mod polling_tests {
         *state.strategy.lock().await = Some(MonitoringStrategy::Polling);
 
         assert!(state.is_monitoring().await);
-        assert_eq!(state.get_strategy().await, Some(MonitoringStrategy::Polling));
+        assert_eq!(
+            state.get_strategy().await,
+            Some(MonitoringStrategy::Polling)
+        );
 
         // Stop
         state.stop_monitoring().await.unwrap();

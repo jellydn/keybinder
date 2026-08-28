@@ -10,7 +10,7 @@ set -e
 # Show help
 show_help() {
 	cat << 'EOF'
-Ralph Wiggum - Long-running AI agent loop for EchoNote
+Ralph Wiggum - Long-running AI agent loop for Keybinder
 
 Usage:
   ./ralph.sh [max_iterations] [cli_tool] [model] [share]
@@ -65,7 +65,31 @@ CLI_TOOL=${2:-amp}
 MODEL=${3:-}
 SHARE=${4:-false}
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+case "$MAX_ITERATIONS" in
+	'' | *[!0-9]*)
+		echo "Error: max_iterations must be a positive integer." >&2
+		exit 2
+		;;
+esac
+if [ "$MAX_ITERATIONS" -lt 1 ]; then
+	echo "Error: max_iterations must be a positive integer." >&2
+	exit 2
+fi
+
+case "$CLI_TOOL" in
+	amp | opencode | pi) ;;
+	*)
+		echo "Error: cli_tool must be one of: amp, opencode, pi." >&2
+		exit 2
+		;;
+esac
+
 PROMPT_FILE="$SCRIPT_DIR/prompt-$CLI_TOOL.md"
+if [ ! -r "$PROMPT_FILE" ]; then
+	echo "Error: prompt file is not readable: $PROMPT_FILE" >&2
+	exit 2
+fi
 
 # Keep OpenCode context available across long-running iterations.
 if [ "$CLI_TOOL" = "opencode" ]; then
@@ -127,7 +151,7 @@ if [ "$CLI_TOOL" = "opencode" ]; then
 	echo "Share session: $SHARE"
 fi
 
-for i in $(seq 1 $MAX_ITERATIONS); do
+for ((i = 1; i <= MAX_ITERATIONS; i++)); do
 	echo ""
 	echo "═══════════════════════════════════════════════════════"
 	echo "  Ralph Iteration $i of $MAX_ITERATIONS"

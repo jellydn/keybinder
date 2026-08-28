@@ -22,9 +22,11 @@ You are an autonomous coding agent working on a software project.
 
 APPEND to progress.txt (never replace, always append):
 
-```
+If the session has a real share URL, add `Session: <URL>` after the heading.
+Omit the session line when no share URL is available.
+
+```text
 ## [Date/Time] - [Story ID]
-[Session: shared if available]
 - What was implemented
 - Files changed
 - **Learnings for future iterations:**
@@ -42,7 +44,7 @@ The learnings section is critical - it helps future iterations avoid repeating m
 
 If you discover a **reusable pattern** that future iterations should know, add it to the `## Codebase Patterns` section at the TOP of progress.txt (create it if it doesn't exist). This section should consolidate the most important learnings:
 
-```
+```text
 ## Codebase Patterns
 - Example: Use `sql<number>` template for aggregations
 - Example: Always use `IF NOT EXISTS` for migrations
@@ -85,6 +87,23 @@ Only update AGENTS.md if you have **genuinely reusable knowledge** that would he
 - Do not leave broken code for review
 - Keep changes focused and minimal
 - Follow existing code patterns
+
+## Browser Testing (Required for Frontend Stories)
+
+For any story that changes UI, you MUST verify it works in the browser:
+
+1. **Preflight Check**: Look for `chrome-devtools-mcp` in the agent's MCP server configuration.
+2. If it is not configured, print:
+   ```text
+   ⚠️  ChromeDevTools MCP not configured. Frontend testing skipped.
+   Configure chrome-devtools-mcp for browser testing:
+   https://github.com/ChromeDevTools/chrome-devtools-mcp/
+   ```
+   Then continue without browser verification.
+3. If it is configured, use MCP browser tools to navigate and verify UI changes.
+4. Take a screenshot if it helps the progress log.
+
+A frontend story is not complete until browser verification passes, or the preflight confirms that the MCP server is unavailable.
 
 ## Stop Condition
 

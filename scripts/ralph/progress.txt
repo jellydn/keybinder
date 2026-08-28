@@ -13,7 +13,6 @@ Started: Sat May  2 13:18:39 +08 2026
 - Parser tests go in `src/parser/mod.rs` under `#[cfg(test)] mod tests`
 
 ## Sat May 2 13:35:00 +08 2026 - US-001
-Session: https://opencodewhatever (placeholder)
 - Implemented US-001: Add SkhdVariant enum and variant detector service
 - Files changed:
   - src-tauri/src/models/skhd_variant.rs (new)
@@ -37,7 +36,6 @@ Session: https://opencodewhatever (placeholder)
 ---
 
 ## Sat May 2 14:35:00 +08 2026 - US-002
-Session: https://opncd.ai/s/[share-id]
 - Implemented US-002: Persist skhd_variant preference in settings
 - Files changed:
   - src-tauri/src/models/settings.rs (new) - SkhdVariantSetting enum and Settings struct
@@ -61,7 +59,6 @@ Session: https://opncd.ai/s/[share-id]
 ---
 
 ## Sat May 2 16:40:00 +08 2026 - US-003
-Session: https://opncd.ai/s/[share-id]
 - Implemented US-003: Variant-aware service manager (start/stop/restart/reload/status)
 - Files changed:
   - src-tauri/src/services/service_manager.rs (refactored - variant-aware dispatch)
@@ -81,7 +78,6 @@ Session: https://opncd.ai/s/[share-id]
 ---
 
 ## Sat May 2 18:35:00 +08 2026 - US-004
-Session: https://opncd.ai/s/[share-id]
 - Implemented US-004: Variant-aware config path resolution
 - Files changed:
   - src-tauri/src/utils/path.rs (added variant-aware functions)
@@ -103,7 +99,6 @@ Session: https://opncd.ai/s/[share-id]
 ---
 
 ## Sat May 2 20:50:00 +08 2026 - US-005
-Session: https://opncd.ai/s/[share-id]
 - Implemented US-005: Parser support for skhd.zig directives: .alias, .define, .path
 - Files changed:
   - src-tauri/src/parser/grammar.pest (updated with directive_line rule, mouse keys, extended modifiers)

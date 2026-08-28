@@ -22,9 +22,11 @@ You are an autonomous coding agent working on a software project.
 
 APPEND to progress.txt (never replace, always append):
 
-```
+If the session has a real share URL, add `Session: <URL>` after the heading.
+Omit the session line when no share URL is available.
+
+```text
 ## [Date/Time] - [Story ID]
-[Session: https://opncd.ai/s/[share-id]]
 - What was implemented
 - Files changed
 - **Learnings for future iterations:**
@@ -42,7 +44,7 @@ The learnings section is critical - it helps future iterations avoid repeating m
 
 If you discover a **reusable pattern** that future iterations should know, add it to the `## Codebase Patterns` section at the TOP of progress.txt (create it if it doesn't exist). This section should consolidate the most important learnings:
 
-```
+```text
 ## Codebase Patterns
 - Example: Use `sql<number>` template for aggregations
 - Example: Always use `IF NOT EXISTS` for migrations
@@ -92,7 +94,7 @@ For any story that changes UI, you MUST verify it works in the browser:
 
 1. **Preflight Check**: Look for `chrome-devtools-mcp` in your opencode.json MCP servers config
 2. If NOT configured, print to console:
-   ```
+   ```text
    ⚠️  ChromeDevTools MCP not configured. Frontend testing skipped.
    Configure chrome-devtools-mcp for browser testing:
    https://github.com/ChromeDevTools/chrome-devtools-mcp/

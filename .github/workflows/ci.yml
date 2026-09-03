@@ -13,7 +13,7 @@ jobs:
     steps:
       # Step 1: Checkout repository
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # Step 2: Setup Bun (JavaScript package manager)
       - name: Setup Bun

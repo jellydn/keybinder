@@ -19,7 +19,7 @@ jobs:
     steps:
       # Step 1: Checkout repository with full history for changelog
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0  # Fetch all history for changelog generation
 

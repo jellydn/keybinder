@@ -32,7 +32,7 @@
     "@typescript-eslint/eslint-plugin": "^8.70.0",
     "@typescript-eslint/parser": "^8.70.0",
     "@vitest/coverage-v8": "^4.1.11",
-    "eslint": "^9.39.5",
+    "eslint": "^10.0.0",
     "eslint-plugin-svelte": "^3.23.0",
     "jsdom": "^30.0.0",
     "prettier": "^3.9.0",

@@ -8,6 +8,7 @@ use tokio::sync::Mutex;
 use crate::models::{
     AccessibilityPermission, InputMonitoringPermission, ServiceState, ServiceStatus, SkhdVariant,
 };
+use crate::services::homebrew;
 use crate::services::service_diagnostics::{
     accessibility_guidance, config_requires_grabber, current_accessibility_denial, parse_zig_status,
 };
@@ -567,34 +568,31 @@ impl ServiceManager {
     pub async fn restart_service(&self) -> Result<(), String> {
         let effective = effective_variant_async().await;
         match effective.variant {
-            SkhdVariant::Original => self.restart_service_original().await,
+            SkhdVariant::Original => self.restart_service_original(homebrew::command()).await,
             SkhdVariant::Zig => self.restart_service_zig(&effective).await,
         }
     }
 
     /// Restart service for original skhd
-    async fn restart_service_original(&self) -> Result<(), String> {
-        let output = Command::new("brew")
-            .args(["services", "restart", "skhd"])
-            .output()
-            .map_err(|e| {
-                format!(
-                    "skhd: Failed to execute brew services restart: {}. \
-                     Make sure Homebrew is installed and skhd was installed via Homebrew.",
-                    e
-                )
-            })?;
+    async fn restart_service_original(&self, brew: std::io::Result<Command>) -> Result<(), String> {
+        let result =
+            brew.and_then(|mut command| command.args(["services", "restart", "skhd"]).output());
+        let brew_error = match result {
+            Ok(output) if output.status.success() => None,
+            Ok(output) => Some(format!(
+                "brew services restart skhd failed ({}): {}",
+                output.status,
+                String::from_utf8_lossy(&output.stderr).trim()
+            )),
+            Err(error) => Some(format!(
+                "Could not execute brew services restart skhd: {error}"
+            )),
+        };
 
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            // If brew services fails, try manual stop/start
-            if self.stop_service_original().await.is_ok() {
-                return self.start_service_original().await;
-            }
-            return Err(format!(
-                "skhd: Failed to restart service: {}.",
-                stderr.trim()
-            ));
+        if let Some(brew_error) = brew_error {
+            return self.restart_launch_agent_original().await.map_err(|error| {
+                format!("skhd: {brew_error}. Launch agent restart also failed: {error}")
+            });
         }
 
         // Wait for service to restart
@@ -611,6 +609,20 @@ impl ServiceManager {
         }
 
         Ok(())
+    }
+
+    /// A manually installed launch agent does not require Homebrew.
+    async fn restart_launch_agent_original(&self) -> Result<(), String> {
+        let plist_path = self.get_plist_path_original()?;
+        if !std::path::Path::new(&plist_path).is_file() {
+            return Err(format!(
+                "No launch agent found at {plist_path}. \
+                 For a Homebrew install, run 'brew services restart skhd' in Terminal. \
+                 Otherwise restart skhd with the service manager used to install it."
+            ));
+        }
+        self.stop_service_original().await?;
+        self.start_service_original().await
     }
 
     /// Restart service for skhd.zig
@@ -662,7 +674,7 @@ impl ServiceManager {
 
         let effective = effective_variant_async().await;
         let result = match effective.variant {
-            SkhdVariant::Original => self.reload_service_original().await,
+            SkhdVariant::Original => self.reload_service_original(&effective).await,
             SkhdVariant::Zig => self.reload_service_zig(&effective).await,
         };
 
@@ -671,14 +683,21 @@ impl ServiceManager {
     }
 
     /// Reload service for original skhd
-    async fn reload_service_original(&self) -> Result<(), String> {
-        let output = Command::new("skhd").arg("--reload").output().map_err(|e| {
-            format!(
-                "skhd: Failed to execute skhd --reload: {}. \
-                     Make sure skhd is installed and available in PATH.",
-                e
-            )
-        })?;
+    async fn reload_service_original(
+        &self,
+        effective: &EffectiveVariantResult,
+    ) -> Result<(), String> {
+        let binary_path = self.get_skhd_binary_path(effective).await?;
+        let output = Command::new(&binary_path)
+            .arg("--reload")
+            .output()
+            .map_err(|e| {
+                format!(
+                    "skhd: Failed to execute {binary_path} --reload: {}. \
+                     Check that this executable exists and has execute permission.",
+                    e
+                )
+            })?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -875,6 +894,165 @@ impl ServiceManager {
 mod tests {
     use super::*;
     use crate::models::SkhdVariant;
+    use std::os::unix::fs::PermissionsExt;
+
+    fn write_executable(path: &std::path::Path, script: &str) {
+        std::fs::write(path, script).unwrap();
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    #[tokio::test]
+    async fn reload_uses_detected_absolute_binary_for_both_variants() {
+        let root = tempfile::tempdir().unwrap();
+        let binary = root.path().join("skhd with spaces");
+        write_executable(
+            &binary,
+            "#!/bin/sh\n[ \"$#\" = 1 ] && [ \"$1\" = --reload ]\n",
+        );
+        let manager = ServiceManager::new();
+        for variant in [SkhdVariant::Original, SkhdVariant::Zig] {
+            let effective = EffectiveVariantResult {
+                variant,
+                is_auto_detected: true,
+                warning: None,
+                detected: Some(crate::models::DetectedVariant::new(
+                    Some(variant),
+                    Some(binary.to_string_lossy().into_owned()),
+                    None,
+                    crate::models::DetectionSource::Path,
+                )),
+            };
+            match variant {
+                SkhdVariant::Original => manager.reload_service_original(&effective).await,
+                SkhdVariant::Zig => manager.reload_service_zig(&effective).await,
+            }
+            .unwrap();
+        }
+    }
+
+    #[test]
+    fn original_restart_handles_brew_and_launch_agent_outcomes() {
+        // Run in a child so HOME and PATH cannot race with other tests. Only fake
+        // launchctl/id executables are reachable, even when this test runs on macOS.
+        for scenario in [
+            "success",
+            "missing",
+            "spawn-error",
+            "nonzero",
+            "no-plist",
+            "stuck",
+        ] {
+            let root = tempfile::tempdir().unwrap();
+            write_executable(&root.path().join("id"), "#!/bin/sh\necho 501\n");
+            write_executable(
+                &root.path().join("brew"),
+                r#"#!/bin/sh
+echo "brew $*" >> "$HOME/commands"
+[ "$*" = 'services restart skhd' ] || exit 99
+if [ "$KEYBINDER_RESTART_TEST_CHILD" = success ]; then
+    echo running > "$HOME/state"
+else
+    echo 'formula unavailable' >&2
+    exit 1
+fi
+"#,
+            );
+            write_executable(
+                &root.path().join("launchctl"),
+                r#"#!/bin/sh
+echo "$*" >> "$HOME/commands"
+case "$1" in
+    bootout)
+        [ "$KEYBINDER_RESTART_TEST_CHILD" = stuck ] && exit 1
+        echo stopped > "$HOME/state" ;;
+    bootstrap) echo running > "$HOME/state" ;;
+    list)
+        read state < "$HOME/state"
+        if [ "$state" = running ]; then echo '1202 0 com.koekeishiya.skhd'; fi
+        ;;
+    *) exit 1 ;;
+esac
+"#,
+            );
+            let output = Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "services::service_manager::tests::original_restart_child",
+                    "--nocapture",
+                ])
+                .env("KEYBINDER_RESTART_TEST_CHILD", scenario)
+                .env("HOME", root.path())
+                .env("PATH", root.path())
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{}\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+            let commands = std::fs::read_to_string(root.path().join("commands")).unwrap();
+            let plist = root
+                .path()
+                .join("Library/LaunchAgents/com.koekeishiya.skhd.plist");
+            let fallback = format!(
+                "bootout gui/501 {}\nlist\nlist\nbootstrap gui/501 {}\nlist\n",
+                plist.display(),
+                plist.display()
+            );
+            let expected = match scenario {
+                "success" => "brew services restart skhd\nlist\n".to_string(),
+                "missing" | "spawn-error" => fallback,
+                "nonzero" => format!("brew services restart skhd\n{fallback}"),
+                "no-plist" => "brew services restart skhd\n".to_string(),
+                "stuck" => format!(
+                    "brew services restart skhd\nbootout gui/501 {}\nunload {}\nlist\n",
+                    plist.display(),
+                    plist.display()
+                ),
+                _ => unreachable!(),
+            };
+            assert_eq!(commands, expected, "{scenario}");
+        }
+    }
+
+    #[tokio::test]
+    async fn original_restart_child() {
+        let Ok(scenario) = std::env::var("KEYBINDER_RESTART_TEST_CHILD") else {
+            return;
+        };
+        let manager = ServiceManager::new();
+        let home = PathBuf::from(std::env::var_os("HOME").unwrap());
+        let plist = PathBuf::from(manager.get_plist_path_original().unwrap());
+        if scenario != "no-plist" {
+            std::fs::create_dir_all(plist.parent().unwrap()).unwrap();
+            std::fs::write(plist, "test launch agent").unwrap();
+        }
+        std::fs::write(home.join("state"), "running\n").unwrap();
+        let brew = match scenario.as_str() {
+            "missing" => Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "Homebrew not found",
+            )),
+            "spawn-error" => Ok(Command::new(home.join("nonexistent-brew"))),
+            _ => Ok(Command::new(home.join("brew"))),
+        };
+        let result = manager.restart_service_original(brew).await;
+        if scenario == "no-plist" || scenario == "stuck" {
+            let error = result.unwrap_err();
+            assert!(error.starts_with("skhd:"));
+            assert!(error.contains("formula unavailable"));
+            assert!(error.contains("Launch agent restart also failed"));
+            if scenario == "no-plist" {
+                assert!(error.contains("No launch agent found"));
+                assert!(error.contains("service manager used to install it"));
+            } else {
+                assert!(error.contains("service is still running"));
+            }
+        } else {
+            result.unwrap();
+        }
+    }
 
     #[test]
     fn test_service_manager_new() {

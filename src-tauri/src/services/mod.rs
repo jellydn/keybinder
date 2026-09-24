@@ -2,6 +2,7 @@
 pub mod app_discovery;
 pub mod backup;
 pub mod file_io;
+mod homebrew;
 pub mod log_tailer;
 pub mod path_validator;
 mod service_diagnostics;

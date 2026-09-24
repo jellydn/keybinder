@@ -2,6 +2,7 @@
 use std::process::Command;
 
 use crate::models::skhd_variant::{DetectedVariant, DetectionSource, SkhdVariant};
+use crate::services::homebrew;
 
 fn classify_version_output(output: &str) -> SkhdVariant {
     if output.trim_start().to_lowercase().starts_with("skhd.zig v") {
@@ -58,9 +59,8 @@ pub fn is_variant_installed(variant: SkhdVariant) -> bool {
         SkhdVariant::Original => &["list", "skhd"],
         SkhdVariant::Zig => &["list", "--cask", "skhd-zig"],
     };
-    if Command::new("brew")
-        .args(brew_args)
-        .output()
+    if homebrew::command()
+        .and_then(|mut command| command.args(brew_args).output())
         .is_ok_and(|output| output.status.success())
     {
         return true;
@@ -112,10 +112,8 @@ fn detect_from_launchd() -> Option<DetectedVariant> {
 fn detect_from_homebrew() -> Option<DetectedVariant> {
     // skhd.zig is distributed as a cask. Its app may use a custom Homebrew appdir,
     // so prefer the executable path reported by `brew list --cask`.
-    let output = Command::new("brew")
-        .args(["list", "--cask", "skhd-zig"])
-        .output()
-        .ok()?;
+    let mut brew = homebrew::command().ok()?;
+    let output = brew.args(["list", "--cask", "skhd-zig"]).output().ok()?;
 
     if output.status.success() {
         let listed_files = String::from_utf8_lossy(&output.stdout);
@@ -132,19 +130,15 @@ fn detect_from_homebrew() -> Option<DetectedVariant> {
     }
 
     // Check for original skhd
-    let output = Command::new("brew").args(["list", "skhd"]).output().ok()?;
+    let output = homebrew::command()
+        .ok()?
+        .args(["list", "skhd"])
+        .output()
+        .ok()?;
 
     if output.status.success() {
         // Get the binary path from brew --prefix
-        let prefix_output = Command::new("brew")
-            .args(["--prefix", "skhd"])
-            .output()
-            .ok()?;
-
-        let prefix = String::from_utf8_lossy(&prefix_output.stdout)
-            .trim()
-            .to_string();
-        let binary_path = format!("{}/bin/skhd", prefix);
+        let binary_path = original_brew_binary()?;
 
         return Some(DetectedVariant::new(
             Some(SkhdVariant::Original),
@@ -231,7 +225,8 @@ fn cask_binary_from_listing(listing: &str) -> Option<String> {
 }
 
 fn zig_cask_binary() -> Option<String> {
-    let output = Command::new("brew")
+    let output = homebrew::command()
+        .ok()?
         .args(["list", "--cask", "skhd-zig"])
         .output()
         .ok()?;
@@ -243,16 +238,19 @@ fn zig_cask_binary() -> Option<String> {
 }
 
 fn original_brew_binary() -> Option<String> {
-    let output = Command::new("brew")
+    let output = homebrew::command()
+        .ok()?
         .args(["--prefix", "skhd"])
         .output()
         .ok()?;
-    output.status.success().then(|| {
-        format!(
-            "{}/bin/skhd",
-            String::from_utf8_lossy(&output.stdout).trim()
-        )
-    })
+    if !output.status.success() {
+        return None;
+    }
+    // brew --prefix can report a formula's path even when it is not installed.
+    // In that case, allow a manually installed binary on PATH to be selected.
+    let prefix = String::from_utf8_lossy(&output.stdout);
+    let binary = std::path::Path::new(prefix.trim()).join("bin/skhd");
+    (binary.is_absolute() && binary.is_file()).then(|| binary.to_string_lossy().into_owned())
 }
 
 fn path_binary() -> Option<String> {
@@ -298,6 +296,67 @@ pub async fn detect_variant_async() -> DetectedVariant {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn original_discovery_handles_missing_formula_and_coexisting_zig() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = tempfile::tempdir().unwrap();
+        let scripts = [
+            ("brew", "#!/bin/sh\n[ \"$*\" = '--prefix skhd' ] || exit 1\nprintf '%s/formula\\n' \"$HOME\"\n"),
+            ("which", "#!/bin/sh\nprintf '%s/skhd\\n' \"$HOME\"\n"),
+            ("skhd", "#!/bin/sh\necho 'skhd.zig v0.2.0'\n"),
+        ];
+        for (name, script) in scripts {
+            let path = root.path().join(name);
+            std::fs::write(&path, script).unwrap();
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let output = Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "services::variant_detector::tests::original_discovery_child",
+                "--nocapture",
+            ])
+            .env("KEYBINDER_DISCOVERY_TEST_CHILD", "1")
+            .env("HOME", root.path())
+            .env("PATH", root.path())
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    #[test]
+    fn original_discovery_child() {
+        use std::os::unix::fs::PermissionsExt;
+        if std::env::var_os("KEYBINDER_DISCOVERY_TEST_CHILD").is_none() {
+            return;
+        }
+        let home = std::path::PathBuf::from(std::env::var_os("HOME").unwrap());
+        // A missing formula must not hide a manual install, or select Zig as classic.
+        assert_eq!(original_brew_binary(), None);
+        assert_eq!(find_binary(SkhdVariant::Original), None);
+        std::fs::write(home.join("skhd"), "#!/bin/sh\necho 'skhd 0.3.9'\n").unwrap();
+        assert_eq!(
+            find_binary(SkhdVariant::Original),
+            Some(home.join("skhd").to_string_lossy().into_owned())
+        );
+
+        // An installed classic formula takes precedence over a Zig binary on PATH.
+        let classic = home.join("formula/bin/skhd");
+        std::fs::create_dir_all(classic.parent().unwrap()).unwrap();
+        std::fs::write(&classic, "#!/bin/sh\necho 'skhd 0.3.9'\n").unwrap();
+        std::fs::set_permissions(&classic, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::write(home.join("skhd"), "#!/bin/sh\necho 'skhd.zig v0.2.0'\n").unwrap();
+        assert_eq!(
+            find_binary(SkhdVariant::Original),
+            Some(classic.to_string_lossy().into_owned())
+        );
+    }
 
     #[test]
     fn test_classify_version_output() {
